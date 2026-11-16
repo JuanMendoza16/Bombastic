@@ -1,0 +1,1114 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pixel Art Map Editor</title>
+  <!-- Tailwind CSS CDN for quick modern UI styling -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    /* Google Fonts Pixel Style */
+    @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap');
+
+    body {
+      font-family: 'VT323', monospace;
+      margin: 20px;
+      background-color: #0f172a;
+      color: #f8fafc;
+    }
+
+    .pixel-font {
+      font-family: 'Press Start 2P', cursive;
+    }
+
+    /* Pixelated image rendering rule across browsers */
+    .pixelated {
+      image-rendering: pixelated;
+      image-rendering: -moz-crisp-edges;
+      image-rendering: crisp-edges;
+      -webkit-optimize-contrast: crisp-edges;
+    }
+
+    /* Grid layout container with zoom and pan support */
+    #map-viewport {
+      position: relative;
+      overflow: hidden;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #map-viewport.ctrl-panning {
+      cursor: grab !important;
+    }
+
+    #map-viewport.ctrl-panning:active {
+      cursor: grabbing !important;
+    }
+
+    #map-scaler {
+      transform-origin: center center;
+      transition: transform 0.05s ease-out;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #map-grid {
+      display: grid;
+      gap: 0px;
+      background-color: #1e293b;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+      width: max-content;
+      height: max-content;
+    }
+
+    /* Individual Grid Cell */
+    .grid-cell {
+      width: 32px;
+      height: 32px;
+      aspect-ratio: 1 / 1;
+      position: relative;
+      background-color: rgba(30, 41, 59, 0.6);
+      transition: background-color 0.15s ease;
+    }
+
+    .grid-cell.show-border {
+      outline: 1px solid rgba(255, 255, 255, 0.08);
+      outline-offset: -1px;
+    }
+
+    .grid-cell:hover {
+      background-color: rgba(59, 130, 246, 0.2);
+    }
+
+    .grid-cell.drag-over {
+      background-color: rgba(34, 197, 94, 0.3) !important;
+      outline: 2px solid #22c55e !important;
+      outline-offset: -2px;
+    }
+
+    .grid-cell.selected-cell {
+      outline: 2px solid #6366f1 !important;
+      outline-offset: -2px;
+      background-color: rgba(99, 102, 241, 0.25) !important;
+    }
+
+    /* Sprite Wrapper inside Grid Cell */
+    .sprite-wrapper {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      pointer-events: none;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+    }
+
+    .sprite-img {
+      width: 100%;
+      height: auto;
+      max-width: none;
+      display: block;
+      object-fit: contain;
+      object-position: bottom center;
+    }
+
+    /* Context menu style */
+    #context-menu {
+      display: none;
+      position: absolute;
+      z-index: 9999;
+    }
+
+    /* Custom Scrollbars */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+  </style>
+</head>
+<body class="flex flex-col min-h-[calc(100vh-40px)] select-none">
+
+  <!-- Header / Controls Bar -->
+  <header class="bg-slate-800 border border-slate-700 rounded-xl p-4 mb-4 flex flex-wrap items-center justify-between gap-4 shadow-lg">
+    <div class="flex items-center space-x-3 overflow-x-auto max-w-[50%]">
+      <div class="bg-indigo-600 p-2 rounded-lg shrink-0">
+        <i data-lucide="grid" class="w-6 h-6 text-white"></i>
+      </div>
+      <div class="shrink-0">
+        <h1 id="main-title" class="pixel-font text-sm md:text-base text-indigo-400">PIXEL MAPPER</h1>
+        <p class="text-xs text-slate-400">Editor de Mapas Pixel Art Top-Down / Isométrico</p>
+      </div>
+
+      <!-- Tabs container for matrices -->
+      <div id="tabs-container" class="flex items-center gap-1 ml-4 border-l border-slate-700 pl-3">
+        <!-- Dynamically filled tabs -->
+      </div>
+    </div>
+
+    <!-- Actions & Toolbar -->
+    <div class="flex flex-wrap items-center gap-2 text-sm">
+      
+      <!-- Undo & Redo Buttons -->
+      <div class="flex items-center gap-1 bg-slate-900/60 p-1 rounded-lg border border-slate-700">
+        <button id="btn-undo" title="Deshacer (Ctrl+Z)" class="p-1.5 rounded text-slate-400 hover:text-white hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400 transition">
+          <i data-lucide="undo-2" class="w-4 h-4"></i>
+        </button>
+        <button id="btn-redo" title="Rehacer (Ctrl+Y / Ctrl+Shift+Z)" class="p-1.5 rounded text-slate-400 hover:text-white hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400 transition">
+          <i data-lucide="redo-2" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <button id="btn-new-matrix" class="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg border border-indigo-500 transition">
+        <i data-lucide="plus" class="w-4 h-4"></i>
+        <span>Nueva Matriz</span>
+      </button>
+
+      <button id="btn-toggle-grid" class="flex items-center gap-1.5 bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 py-1.5 rounded-lg border border-slate-600 transition">
+        <i data-lucide="eye" class="w-4 h-4"></i>
+        <span>Grilla</span>
+      </button>
+
+      <button id="btn-clear" class="flex items-center gap-1.5 bg-rose-900/40 hover:bg-rose-800/60 text-rose-300 border border-rose-700/50 px-3 py-1.5 rounded-lg transition">
+        <i data-lucide="trash-2" class="w-4 h-4"></i>
+        <span>Limpiar</span>
+      </button>
+
+      <div class="h-6 w-px bg-slate-700 mx-1"></div>
+
+      <button id="btn-export-json" class="flex items-center gap-1.5 bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 py-1.5 rounded-lg border border-slate-600 transition">
+        <i data-lucide="download" class="w-4 h-4"></i>
+        <span>Exportar JSON</span>
+      </button>
+
+      <label class="flex items-center gap-1.5 bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 py-1.5 rounded-lg border border-slate-600 cursor-pointer transition">
+        <i data-lucide="upload" class="w-4 h-4"></i>
+        <span>Cargar JSON</span>
+        <input type="file" id="input-import-json" accept=".json" class="hidden">
+      </label>
+
+      <button id="btn-export-image" class="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-medium px-4 py-1.5 rounded-lg shadow-md transition">
+        <i data-lucide="image" class="w-4 h-4"></i>
+        <span>Guardar PNG</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Content Layout -->
+  <div class="flex flex-col lg:flex-row gap-4 flex-1">
+    
+    <!-- Editor Grid Canvas Area with Fixed Viewport & Zoom -->
+    <main class="flex-1 flex items-center justify-center bg-slate-900/80 border border-slate-800 rounded-xl p-4 overflow-hidden relative min-h-[500px]">
+      <div id="map-viewport">
+        <div id="map-scaler">
+          <div id="map-grid" class="border-2 border-slate-700 rounded-lg overflow-hidden">
+            <!-- Dynamic grid cells -->
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Sidebar / Asset Palette & Layers -->
+    <aside class="w-full lg:w-80 bg-slate-800 border border-slate-700 rounded-xl p-4 flex flex-col shadow-lg gap-4">
+      
+      <!-- PALETA DE SPRITES -->
+      <div class="flex flex-col">
+        <div class="flex items-center justify-between mb-3 pb-2 border-b border-slate-700">
+          <h2 class="pixel-font text-xs text-indigo-300 flex items-center gap-2">
+            <i data-lucide="layers" class="w-4 h-4"></i>
+            PALETA SPRITES
+          </h2>
+          <span id="sprite-count" class="text-xs text-slate-400 bg-slate-900 px-2 py-0.5 rounded">0 sprites</span>
+        </div>
+
+        <label class="border-2 border-dashed border-slate-600 hover:border-indigo-500 bg-slate-900/50 hover:bg-slate-900 p-3 rounded-lg flex flex-col items-center justify-center cursor-pointer transition mb-3 text-center group">
+          <i data-lucide="plus-circle" class="w-7 h-7 text-slate-400 group-hover:text-indigo-400 mb-1 transition"></i>
+          <span class="text-xs text-slate-300 font-medium">Cargar Sprites (PNG)</span>
+          <span class="text-[10px] text-slate-500 mt-0.5">Puedes arrastrar múltiples archivos aquí</span>
+          <input type="file" id="input-sprite-upload" accept="image/png, image/webp" multiple class="hidden">
+        </label>
+
+        <div class="flex items-center gap-2 mb-3 bg-slate-900/80 p-2 rounded-lg border border-slate-700">
+          <span class="text-xs text-slate-400">Modo:</span>
+          <button id="tool-pointer" class="flex-1 text-xs py-1 px-2 rounded bg-indigo-600 text-white font-medium border border-indigo-500">Pincel / Drag</button>
+          <button id="tool-eraser" class="flex-1 text-xs py-1 px-2 rounded bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700">Borrador</button>
+        </div>
+
+        <div id="sprite-palette" class="grid grid-cols-4 gap-2 overflow-y-auto max-h-[360px] p-1 bg-slate-900/40 rounded-lg border border-slate-700/50">
+          <div class="col-span-4 text-center py-6 text-slate-500 text-xs italic">
+            Carga imágenes PNG para utilizarlas en el mapa.
+          </div>
+        </div>
+      </div>
+
+      <!-- CAPAS DE LA CELDA SELECCIONADA -->
+      <div class="flex flex-col border-t border-slate-700 pt-3">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="pixel-font text-xs text-amber-300 flex items-center gap-2">
+            <i data-lucide="stack" class="w-4 h-4"></i>
+            CAPAS DE CELDA
+          </h2>
+          <span id="selected-cell-label" class="text-[10px] text-slate-400 bg-slate-900 px-2 py-0.5 rounded">Ninguna celda</span>
+        </div>
+        <div id="cell-layers-list" class="flex flex-col gap-1.5 max-h-[180px] overflow-y-auto p-1 bg-slate-900/40 rounded-lg border border-slate-700/50 text-xs">
+          <div class="text-center py-4 text-slate-500 text-[11px] italic">
+            Haz clic en una celda para ver y gestionar sus capas.
+          </div>
+        </div>
+      </div>
+
+      <div class="pt-2 border-t border-slate-700/50 text-[11px] text-slate-400 space-y-1">
+        <p>💡 <b class="text-slate-300">Instrucciones & Atajos:</b></p>
+        <p>• <b class="text-indigo-400">Ctrl + Z</b>: Deshacer | <b class="text-indigo-400">Ctrl + Y</b>: Rehacer</p>
+        <p>• Mantén <b class="text-indigo-400">Ctrl + Clic Izquierdo</b> y arrastra para desplazar el mapa.</p>
+        <p>• Rueda del mouse / trackpad para Zoom.</p>
+        <p>• Arrastra el mouse para pintar continuo con el pincel.</p>
+      </div>
+    </aside>
+
+  </div>
+
+  <!-- Custom Context Menu for Cell Erasure -->
+  <div id="context-menu" class="bg-slate-800 border border-slate-600 text-slate-200 rounded-lg shadow-xl py-1 text-xs w-40">
+    <button id="menu-delete" class="w-full text-left px-3 py-1.5 hover:bg-rose-600 hover:text-white flex items-center gap-2">
+      <i data-lucide="trash" class="w-3.5 h-3.5"></i>
+      <span>Quitar última capa</span>
+    </button>
+  </div>
+
+  <!-- Canvas Hidden element for PNG export -->
+  <canvas id="export-canvas" class="hidden"></canvas>
+
+  <script>
+    // Multi-Matrix / Projects Management State
+    let projects = [
+      {
+        id: 'proj_default',
+        name: 'Mapa Pixel',
+        cols: 24,
+        rows: 13,
+        gridData: Array(13 * 24).fill(null).map(() => []),
+        undoStack: [],
+        redoStack: []
+      }
+    ];
+    let currentProjectId = 'proj_default';
+
+    // Shared global asset library across tabs
+    let spriteLibrary = [];
+    let selectedPaletteIndex = null;
+    let selectedCellIndex = null;
+    let activeTool = 'pointer';
+    let showGridLines = true;
+    let rightClickedCellIndex = null;
+    let isMouseDown = false;
+    let isPaintingStroke = false; // Flag to capture a single undo step for a continuous drag stroke
+
+    // Pan & Zoom state
+    let zoomLevel = 1.0;
+    const MIN_ZOOM = 0.3;
+    const MAX_ZOOM = 3.0;
+
+    let isCtrlPressed = false;
+    let isPanning = false;
+    let startX = 0;
+    let startY = 0;
+    let panX = 0;
+    let panY = 0;
+
+    // DOM Elements
+    const mapGrid = document.getElementById('map-grid');
+    const mapScaler = document.getElementById('map-scaler');
+    const mapViewport = document.getElementById('map-viewport');
+    const spritePalette = document.getElementById('sprite-palette');
+    const spriteCount = document.getElementById('sprite-count');
+    const inputSpriteUpload = document.getElementById('input-sprite-upload');
+    const btnToggleGrid = document.getElementById('btn-toggle-grid');
+    const btnClear = document.getElementById('btn-clear');
+    const btnExportJson = document.getElementById('btn-export-json');
+    const inputImportJson = document.getElementById('input-import-json');
+    const btnExportImage = document.getElementById('btn-export-image');
+    const btnNewMatrix = document.getElementById('btn-new-matrix');
+    const btnUndo = document.getElementById('btn-undo');
+    const btnRedo = document.getElementById('btn-redo');
+    const toolPointer = document.getElementById('tool-pointer');
+    const toolEraser = document.getElementById('tool-eraser');
+    const contextMenu = document.getElementById('context-menu');
+    const menuDelete = document.getElementById('menu-delete');
+    const cellLayersList = document.getElementById('cell-layers-list');
+    const selectedCellLabel = document.getElementById('selected-cell-label');
+    const tabsContainer = document.getElementById('tabs-container');
+    const mainTitle = document.getElementById('main-title');
+
+    lucide.createIcons();
+
+    window.addEventListener('mousedown', () => { isMouseDown = true; });
+    window.addEventListener('mouseup', () => { 
+      isMouseDown = false; 
+      isPaintingStroke = false; 
+    });
+
+    // Helper function to clone grid state deeply for Undo/Redo stacks
+    function cloneGridData(gridData) {
+      return gridData.map(cellLayers => cellLayers.map(layer => ({ ...layer })));
+    }
+
+    // Save current grid snapshot before a modification
+    function saveHistoryState() {
+      const proj = getCurrentProject();
+      if (!proj) return;
+      proj.undoStack.push(cloneGridData(proj.gridData));
+      // Clear redo stack on new action
+      proj.redoStack = [];
+      updateUndoRedoButtons();
+    }
+
+    function undo() {
+      const proj = getCurrentProject();
+      if (!proj || proj.undoStack.length === 0) return;
+
+      // Push current state to redo stack
+      proj.redoStack.push(cloneGridData(proj.gridData));
+
+      // Pop state from undo stack
+      proj.gridData = proj.undoStack.pop();
+
+      renderGrid();
+      renderCellLayersList();
+      updateUndoRedoButtons();
+    }
+
+    function redo() {
+      const proj = getCurrentProject();
+      if (!proj || proj.redoStack.length === 0) return;
+
+      // Push current state to undo stack
+      proj.undoStack.push(cloneGridData(proj.gridData));
+
+      // Pop state from redo stack
+      proj.gridData = proj.redoStack.pop();
+
+      renderGrid();
+      renderCellLayersList();
+      updateUndoRedoButtons();
+    }
+
+    function updateUndoRedoButtons() {
+      const proj = getCurrentProject();
+      if (!proj) return;
+      btnUndo.disabled = proj.undoStack.length === 0;
+      btnRedo.disabled = proj.redoStack.length === 0;
+    }
+
+    // Track Ctrl key state for panning and Undo/Redo shortcuts
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Control') {
+        isCtrlPressed = true;
+        mapViewport.classList.add('ctrl-panning');
+      }
+
+      // Undo: Ctrl + Z
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      }
+
+      // Redo: Ctrl + Y OR Ctrl + Shift + Z
+      if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) {
+        e.preventDefault();
+        redo();
+      }
+    });
+
+    window.addEventListener('keyup', (e) => {
+      if (e.key === 'Control') {
+        isCtrlPressed = false;
+        isPanning = false;
+        mapViewport.classList.remove('ctrl-panning');
+      }
+    });
+
+    btnUndo.addEventListener('click', undo);
+    btnRedo.addEventListener('click', redo);
+
+    // Handle map panning with Ctrl + Mouse Drag
+    mapViewport.addEventListener('mousedown', (e) => {
+      if (isCtrlPressed && e.button === 0) {
+        isPanning = true;
+        startX = e.clientX - panX;
+        startY = e.clientY - panY;
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (isPanning && isCtrlPressed) {
+        panX = e.clientX - startX;
+        panY = e.clientY - startY;
+        updateTransform();
+      }
+    });
+
+    window.addEventListener('mouseup', () => {
+      isPanning = false;
+    });
+
+    function getCurrentProject() {
+      return projects.find(p => p.id === currentProjectId);
+    }
+
+    // 1. Initialize Map Grid
+    function initGrid() {
+      const proj = getCurrentProject();
+      mapGrid.innerHTML = '';
+      mapGrid.style.gridTemplateColumns = `repeat(${proj.cols}, minmax(0, 1fr))`;
+
+      for (let r = 0; r < proj.rows; r++) {
+        for (let c = 0; c < proj.cols; c++) {
+          const index = r * proj.cols + c;
+          const cell = document.createElement('div');
+          
+          cell.className = `grid-cell ${showGridLines ? 'show-border' : ''}`;
+          cell.dataset.index = index;
+          cell.dataset.row = r;
+          cell.dataset.col = c;
+          cell.style.zIndex = r;
+
+          cell.addEventListener('dragover', handleDragOver);
+          cell.addEventListener('dragleave', handleDragLeave);
+          cell.addEventListener('drop', handleDrop);
+          
+          cell.addEventListener('mousedown', (e) => {
+            if (!isCtrlPressed && e.button === 0) {
+              handleCellAction(index);
+            }
+          });
+          
+          cell.addEventListener('mouseenter', () => {
+            if (isMouseDown && !isCtrlPressed) handleCellAction(index);
+          });
+          
+          cell.addEventListener('contextmenu', (e) => handleCellContextMenu(e, index));
+
+          mapGrid.appendChild(cell);
+        }
+      }
+      renderGrid();
+      renderTabs();
+      updateUndoRedoButtons();
+    }
+
+    // 2. Render Cell Content
+    function renderCell(index) {
+      const proj = getCurrentProject();
+      const cell = mapGrid.children[index];
+      if (!cell) return;
+
+      cell.innerHTML = '';
+      const spriteList = proj.gridData[index];
+
+      if (spriteList && spriteList.length > 0) {
+        spriteList.forEach((spriteData, layerIdx) => {
+          const wrapper = document.createElement('div');
+          wrapper.className = 'sprite-wrapper';
+          wrapper.style.zIndex = layerIdx;
+
+          const img = document.createElement('img');
+          img.src = spriteData.src;
+          img.className = 'sprite-img pixelated';
+          
+          if (spriteData.aspectRatio) {
+            const heightPercent = Math.max(100, (spriteData.aspectRatio) * 100);
+            img.style.height = `${heightPercent}%`;
+          } else {
+            img.style.height = 'auto';
+          }
+
+          wrapper.appendChild(img);
+          cell.appendChild(wrapper);
+        });
+      }
+
+      if (selectedCellIndex === index) {
+        cell.classList.add('selected-cell');
+      } else {
+        cell.classList.remove('selected-cell');
+      }
+    }
+
+    function renderGrid() {
+      const proj = getCurrentProject();
+      for (let i = 0; i < proj.rows * proj.cols; i++) {
+        renderCell(i);
+      }
+    }
+
+    // 3. Tabs Management
+    function renderTabs() {
+      tabsContainer.innerHTML = '';
+      projects.forEach(proj => {
+        const tab = document.createElement('div');
+        tab.className = `flex items-center gap-2 px-3 py-1 rounded-lg text-xs cursor-pointer transition border ${proj.id === currentProjectId ? 'bg-indigo-600 text-white border-indigo-500 font-medium' : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'}`;
+        
+        const titleSpan = document.createElement('span');
+        titleSpan.textContent = proj.name;
+        titleSpan.addEventListener('click', () => switchProject(proj.id));
+        tab.appendChild(titleSpan);
+
+        if (projects.length > 1) {
+          const closeBtn = document.createElement('button');
+          closeBtn.className = 'hover:text-rose-300 text-slate-400 ml-1';
+          closeBtn.innerHTML = `<i data-lucide="x" class="w-3 h-3"></i>`;
+          closeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            closeProject(proj.id);
+          });
+          tab.appendChild(closeBtn);
+        }
+
+        tabsContainer.appendChild(tab);
+      });
+      mainTitle.textContent = getCurrentProject().name.toUpperCase();
+      lucide.createIcons();
+    }
+
+    function switchProject(id) {
+      currentProjectId = id;
+      selectedCellIndex = null;
+      panX = 0;
+      panY = 0;
+      initGrid();
+      renderCellLayersList();
+      autoFitZoom();
+    }
+
+    function closeProject(id) {
+      projects = projects.filter(p => p.id !== id);
+      if (currentProjectId === id) {
+        currentProjectId = projects[0].id;
+      }
+      panX = 0;
+      panY = 0;
+      initGrid();
+      renderCellLayersList();
+      autoFitZoom();
+    }
+
+    btnNewMatrix.addEventListener('click', () => {
+      const inputCols = prompt('Ingrese el ancho (columnas, ej: 24):', '24');
+      if (!inputCols) return;
+      const inputRows = prompt('Ingrese el alto (filas, ej: 13):', '13');
+      if (!inputRows) return;
+
+      const cols = parseInt(inputCols);
+      const rows = parseInt(inputRows);
+
+      if (isNaN(cols) || isNaN(rows) || cols <= 0 || rows <= 0) {
+        alert('Dimensiones inválidas.');
+        return;
+      }
+
+      const newId = 'proj_' + Date.now();
+      const newProj = {
+        id: newId,
+        name: `Mapa ${cols}x${rows}`,
+        cols: cols,
+        rows: rows,
+        gridData: Array(rows * cols).fill(null).map(() => []),
+        undoStack: [],
+        redoStack: []
+      };
+
+      projects.push(newProj);
+      switchProject(newId);
+    });
+
+    function autoFitZoom() {
+      const proj = getCurrentProject();
+      if (proj.cols > 24 || proj.rows > 15) {
+        zoomLevel = 0.75;
+      } else {
+        zoomLevel = 1.0;
+      }
+      updateTransform();
+    }
+
+    function updateTransform() {
+      mapScaler.style.transform = `translate(${panX}px, ${panY}px) scale(${zoomLevel})`;
+    }
+
+    // 4. Zoom with Mouse Wheel / Trackpad with limits
+    mapViewport.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const zoomFactor = 0.1;
+      if (e.deltaY < 0) {
+        zoomLevel = Math.min(MAX_ZOOM, zoomLevel + zoomFactor);
+      } else {
+        zoomLevel = Math.max(MIN_ZOOM, zoomLevel - zoomFactor);
+      }
+      updateTransform();
+    }, { passive: false });
+
+    // 5. Drag & Drop & Painting Handlers
+    function handleDragOver(e) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+      this.classList.add('drag-over');
+    }
+
+    function handleDragLeave(e) {
+      this.classList.remove('drag-over');
+    }
+
+    async function handleDrop(e) {
+      e.preventDefault();
+      this.classList.remove('drag-over');
+      const cellIndex = parseInt(this.dataset.index);
+
+      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        const file = e.dataTransfer.files[0];
+        if (file.type.startsWith('image/')) {
+          saveHistoryState();
+          const spriteObj = await processImageFile(file);
+          addSpriteToPalette(spriteObj);
+          addSpriteToCell(cellIndex, spriteObj, false);
+        }
+        return;
+      }
+
+      const paletteIndex = e.dataTransfer.getData('text/palette-index');
+      if (paletteIndex !== '') {
+        const spriteObj = spriteLibrary[parseInt(paletteIndex)];
+        if (spriteObj) {
+          saveHistoryState();
+          addSpriteToCell(cellIndex, spriteObj, false);
+        }
+      }
+    }
+
+    function addSpriteToCell(index, spriteObj, shouldRecordHistory = true) {
+      const proj = getCurrentProject();
+      if (!proj.gridData[index]) {
+        proj.gridData[index] = [];
+      }
+      
+      const alreadyExists = proj.gridData[index].some(s => s.src === spriteObj.src);
+      if (alreadyExists) {
+        selectCell(index);
+        return;
+      }
+
+      if (shouldRecordHistory) {
+        saveHistoryState();
+      }
+
+      proj.gridData[index].push({
+        id: spriteObj.id,
+        src: spriteObj.src,
+        aspectRatio: spriteObj.aspectRatio
+      });
+      selectCell(index);
+      renderCell(index);
+    }
+
+    function selectCell(index) {
+      const proj = getCurrentProject();
+      if (selectedCellIndex !== null && mapGrid.children[selectedCellIndex]) {
+        mapGrid.children[selectedCellIndex].classList.remove('selected-cell');
+      }
+      selectedCellIndex = index;
+      if (selectedCellIndex !== null && mapGrid.children[selectedCellIndex]) {
+        mapGrid.children[selectedCellIndex].classList.add('selected-cell');
+      }
+      renderCellLayersList();
+    }
+
+    function handleCellAction(index) {
+      if (isCtrlPressed) return; // Ignore painting if panning
+      const proj = getCurrentProject();
+
+      // If starting a drag stroke, save state ONCE at the beginning of drag
+      if (!isPaintingStroke) {
+        saveHistoryState();
+        isPaintingStroke = true;
+      }
+
+      selectCell(index);
+      if (activeTool === 'eraser') {
+        if (proj.gridData[index] && proj.gridData[index].length > 0) {
+          proj.gridData[index].pop();
+          renderCell(index);
+          renderCellLayersList();
+        }
+      } else if (selectedPaletteIndex !== null && spriteLibrary[selectedPaletteIndex]) {
+        addSpriteToCell(index, spriteLibrary[selectedPaletteIndex], false);
+      }
+    }
+
+    function handleCellContextMenu(e, index) {
+      e.preventDefault();
+      rightClickedCellIndex = index;
+      contextMenu.style.display = 'block';
+      contextMenu.style.left = `${e.pageX}px`;
+      contextMenu.style.top = `${e.pageY}px`;
+    }
+
+    document.addEventListener('click', (e) => {
+      if (!contextMenu.contains(e.target)) {
+        contextMenu.style.display = 'none';
+      }
+    });
+
+    menuDelete.addEventListener('click', () => {
+      const proj = getCurrentProject();
+      if (rightClickedCellIndex !== null) {
+        if (proj.gridData[rightClickedCellIndex] && proj.gridData[rightClickedCellIndex].length > 0) {
+          saveHistoryState();
+          proj.gridData[rightClickedCellIndex].pop();
+          renderCell(rightClickedCellIndex);
+          if (selectedCellIndex === rightClickedCellIndex) {
+            renderCellLayersList();
+          }
+        }
+        rightClickedCellIndex = null;
+      }
+      contextMenu.style.display = 'none';
+    });
+
+    // 6. Layers Management Panel UI
+    function renderCellLayersList() {
+      const proj = getCurrentProject();
+      if (selectedCellIndex === null) {
+        selectedCellLabel.textContent = "Ninguna celda";
+        cellLayersList.innerHTML = `<div class="text-center py-4 text-slate-500 text-[11px] italic">Haz clic en una celda para ver y gestionar sus capas.</div>`;
+        return;
+      }
+
+      const r = Math.floor(selectedCellIndex / proj.cols);
+      const c = selectedCellIndex % proj.cols;
+      selectedCellLabel.textContent = `Celda [${c}, ${r}]`;
+
+      const layers = proj.gridData[selectedCellIndex] || [];
+      if (layers.length === 0) {
+        cellLayersList.innerHTML = `<div class="text-center py-4 text-slate-500 text-[11px] italic">Celda vacía.</div>`;
+        return;
+      }
+
+      cellLayersList.innerHTML = '';
+      for (let i = layers.length - 1; i >= 0; i--) {
+        const layer = layers[i];
+        const layerItem = document.createElement('div');
+        layerItem.className = 'flex items-center justify-between bg-slate-800/80 hover:bg-slate-800 p-1.5 rounded border border-slate-700';
+
+        const info = document.createElement('div');
+        info.className = 'flex items-center gap-2 overflow-hidden';
+
+        const thumb = document.createElement('img');
+        thumb.src = layer.src;
+        thumb.className = 'w-6 h-6 object-contain pixelated bg-slate-900 rounded p-0.5';
+
+        const title = document.createElement('span');
+        title.className = 'text-[11px] text-slate-300 truncate';
+        title.textContent = `Capa #${i + 1}`;
+
+        info.appendChild(thumb);
+        info.appendChild(title);
+
+        const actions = document.createElement('div');
+        actions.className = 'flex items-center gap-1';
+
+        if (i < layers.length - 1) {
+          const upBtn = document.createElement('button');
+          upBtn.className = 'text-slate-400 hover:text-indigo-300 p-0.5 transition';
+          upBtn.innerHTML = `<i data-lucide="chevron-up" class="w-3.5 h-3.5"></i>`;
+          upBtn.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            saveHistoryState();
+            const temp = layers[i];
+            layers[i] = layers[i + 1];
+            layers[i + 1] = temp;
+            renderCell(selectedCellIndex);
+            renderCellLayersList();
+          });
+          actions.appendChild(upBtn);
+        }
+
+        if (i > 0) {
+          const downBtn = document.createElement('button');
+          downBtn.className = 'text-slate-400 hover:text-indigo-300 p-0.5 transition';
+          downBtn.innerHTML = `<i data-lucide="chevron-down" class="w-3.5 h-3.5"></i>`;
+          downBtn.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            saveHistoryState();
+            const temp = layers[i];
+            layers[i] = layers[i - 1];
+            layers[i - 1] = temp;
+            renderCell(selectedCellIndex);
+            renderCellLayersList();
+          });
+          actions.appendChild(downBtn);
+        }
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'text-rose-400 hover:text-rose-200 p-1 transition';
+        deleteBtn.innerHTML = `<i data-lucide="trash-2" class="w-3.5 h-3.5"></i>`;
+        deleteBtn.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          saveHistoryState();
+          layers.splice(i, 1);
+          renderCell(selectedCellIndex);
+          renderCellLayersList();
+        });
+        actions.appendChild(deleteBtn);
+
+        layerItem.appendChild(info);
+        layerItem.appendChild(actions);
+        cellLayersList.appendChild(layerItem);
+      }
+      lucide.createIcons();
+    }
+
+    // 7. Sprite Loading & Palette Management
+    function processImageFile(file) {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const src = e.target.result;
+          const img = new Image();
+          img.onload = () => {
+            const aspectRatio = img.height / img.width;
+            resolve({
+              id: 'sprite_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+              src: src,
+              width: img.width,
+              height: img.height,
+              aspectRatio: aspectRatio
+            });
+          };
+          img.src = src;
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function addSpriteToPalette(spriteObj) {
+      const existing = spriteLibrary.find(s => s.src === spriteObj.src);
+      if (existing) return;
+      spriteLibrary.push(spriteObj);
+      renderPalette();
+    }
+
+    function renderPalette() {
+      spritePalette.innerHTML = '';
+      spriteCount.textContent = `${spriteLibrary.length} sprites`;
+
+      if (spriteLibrary.length === 0) {
+        spritePalette.innerHTML = `<div class="col-span-4 text-center py-6 text-slate-500 text-xs italic">Carga imágenes PNG para utilizarlas en el mapa.</div>`;
+        return;
+      }
+
+      spriteLibrary.forEach((sprite, idx) => {
+        const card = document.createElement('div');
+        card.className = `relative aspect-square bg-slate-800 rounded-lg border-2 p-1 cursor-pointer flex items-end justify-center overflow-hidden hover:border-indigo-400 transition ${selectedPaletteIndex === idx ? 'border-indigo-500 bg-indigo-950/40' : 'border-slate-700'}`;
+        card.draggable = true;
+
+        const img = document.createElement('img');
+        img.src = sprite.src;
+        img.className = 'pixelated max-h-full max-w-full object-contain bottom-0';
+
+        card.addEventListener('dragstart', (e) => {
+          e.dataTransfer.setData('text/palette-index', idx);
+          e.dataTransfer.effectAllowed = 'copy';
+        });
+
+        card.addEventListener('click', () => {
+          selectedPaletteIndex = idx;
+          setActiveTool('pointer');
+          renderPalette();
+        });
+
+        card.appendChild(img);
+        spritePalette.appendChild(card);
+      });
+    }
+
+    inputSpriteUpload.addEventListener('change', async (e) => {
+      const files = Array.from(e.target.files);
+      for (const file of files) {
+        if (file.type.startsWith('image/')) {
+          const sprite = await processImageFile(file);
+          addSpriteToPalette(sprite);
+        }
+      }
+      if (spriteLibrary.length > 0 && selectedPaletteIndex === null) {
+        selectedPaletteIndex = 0;
+        renderPalette();
+      }
+    });
+
+    // 8. Tools & Controls
+    function setActiveTool(tool) {
+      activeTool = tool;
+      if (tool === 'pointer') {
+        toolPointer.className = 'flex-1 text-xs py-1 px-2 rounded bg-indigo-600 text-white font-medium border border-indigo-500';
+        toolEraser.className = 'flex-1 text-xs py-1 px-2 rounded bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700';
+      } else {
+        toolEraser.className = 'flex-1 text-xs py-1 px-2 rounded bg-rose-600 text-white font-medium border border-rose-500';
+        toolPointer.className = 'flex-1 text-xs py-1 px-2 rounded bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700';
+      }
+    }
+
+    toolPointer.addEventListener('click', () => setActiveTool('pointer'));
+    toolEraser.addEventListener('click', () => setActiveTool('eraser'));
+
+    btnToggleGrid.addEventListener('click', () => {
+      showGridLines = !showGridLines;
+      const cells = document.querySelectorAll('.grid-cell');
+      cells.forEach(c => {
+        if (showGridLines) c.classList.add('show-border');
+        else c.classList.remove('show-border');
+      });
+    });
+
+    btnClear.addEventListener('click', () => {
+      const proj = getCurrentProject();
+      if (confirm(`¿Estás seguro de que deseas borrar todo el mapa "${proj.name}"?`)) {
+        saveHistoryState();
+        proj.gridData = Array(proj.rows * proj.cols).fill(null).map(() => []);
+        selectedCellIndex = null;
+        renderGrid();
+        renderCellLayersList();
+      }
+    });
+
+    // 9. Export / Import JSON
+    btnExportJson.addEventListener('click', () => {
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({
+        projects: projects.map(p => ({
+          id: p.id,
+          name: p.name,
+          cols: p.cols,
+          rows: p.rows,
+          gridData: p.gridData
+        })),
+        spriteLibrary: spriteLibrary
+      }, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", `pixel_maps_project_${Date.now()}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+    });
+
+    inputImportJson.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const imported = JSON.parse(event.target.result);
+          if (imported.projects && imported.spriteLibrary) {
+            projects = imported.projects.map(p => ({
+              ...p,
+              undoStack: [],
+              redoStack: []
+            }));
+            spriteLibrary = imported.spriteLibrary;
+            currentProjectId = projects[0].id;
+            selectedCellIndex = null;
+            panX = 0;
+            panY = 0;
+            renderPalette();
+            initGrid();
+            renderCellLayersList();
+          }
+        } catch (err) {
+          alert('Error al leer el archivo JSON.');
+        }
+      };
+      reader.readAsText(file);
+    });
+
+    // 10. PNG Export
+    btnExportImage.addEventListener('click', async () => {
+      const proj = getCurrentProject();
+      const CELL_SIZE = 32;
+      const canvas = document.getElementById('export-canvas');
+      const ctx = canvas.getContext('2d');
+
+      canvas.width = proj.cols * CELL_SIZE;
+      canvas.height = proj.rows * CELL_SIZE;
+
+      ctx.imageSmoothingEnabled = false;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      const imageMap = new Map();
+      const loadPromises = spriteLibrary.map(sprite => {
+        return new Promise((resolve) => {
+          const img = new Image();
+          img.crossOrigin = "anonymous";
+          img.onload = () => {
+            imageMap.set(sprite.src, img);
+            resolve();
+          };
+          img.src = sprite.src;
+        });
+      });
+
+      await Promise.all(loadPromises);
+
+      for (let r = 0; r < proj.rows; r++) {
+        for (let c = 0; c < proj.cols; c++) {
+          const index = r * proj.cols + c;
+          const spriteList = proj.gridData[index];
+
+          if (spriteList && spriteList.length > 0) {
+            spriteList.forEach(data => {
+              if (imageMap.has(data.src)) {
+                const img = imageMap.get(data.src);
+                const cellX = c * CELL_SIZE;
+                const cellY = r * CELL_SIZE;
+
+                const drawWidth = CELL_SIZE;
+                const drawHeight = CELL_SIZE * (data.aspectRatio || 1);
+                const drawY = cellY + CELL_SIZE - drawHeight;
+
+                ctx.drawImage(img, cellX, drawY, drawWidth, drawHeight);
+              }
+            });
+          }
+        }
+      }
+
+      const link = document.createElement('a');
+      link.download = `${proj.name.toLowerCase().replace(/\s+/g, '_')}_${Date.now()}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    });
+
+    // Initialize application
+    window.onload = () => {
+      initGrid();
+    };
+  </script>
+</body>
+</html>

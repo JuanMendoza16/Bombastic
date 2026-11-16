@@ -1,0 +1,11 @@
+{
+  "name": "Bomberman — PixelForge Studios",
+  "short_name": "Bomberman",
+  "description": "Battle Arena 2D de Captura la Bandera con bombas, clases y Hipercargas.",
+  "start_url": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#140b24",
+  "theme_color": "#140b24",
+  "icons": [{ "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

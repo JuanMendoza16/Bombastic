@@ -1,0 +1,22 @@
+# Despliegue en Render (https://render.com): New → Blueprint → elegir este repositorio.
+services:
+  - type: web
+    name: bomberman-pixelforge
+    runtime: node
+    plan: starter
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DB_PATH
+        value: /var/data/bomberman.db
+      - key: TRUST_PROXY
+        value: "1"
+    disk:
+      name: bomberman-data
+      mountPath: /var/data
+      sizeGB: 1
