@@ -39,19 +39,39 @@ interface AdminMatch {
   players: string;
 }
 
+interface ServerSettings {
+  announcementEnabled: boolean;
+  announcementText: string;
+  maintenanceEnabled: boolean;
+  maintenanceStart: string;
+  maintenanceEnd: string;
+  autoDeployEnabled: boolean;
+  autoDeploySchedule: string;
+}
+
 export function AdminScreen() {
   const user = useUser();
-  const [tab, setTab] = useState<'dash' | 'users' | 'matches'>('dash');
+  const [tab, setTab] = useState<'dash' | 'users' | 'matches' | 'server'>('dash');
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [matches, setMatches] = useState<AdminMatch[]>([]);
   const [q, setQ] = useState('');
+  const [settings, setSettings] = useState<ServerSettings | null>(null);
+  const [maintenanceActive, setMaintenanceActive] = useState(false);
+  const [grantUser, setGrantUser] = useState<AdminUser | null>(null);
+  const [grantCoins, setGrantCoins] = useState('100');
+  const [grantItem, setGrantItem] = useState('');
 
   const load = async () => {
     try {
       if (tab === 'dash') setStats(await api<AdminStats>('GET', '/api/admin/stats'));
       if (tab === 'users') setUsers((await api<{ users: AdminUser[] }>('GET', `/api/admin/users?q=${encodeURIComponent(q)}`)).users);
       if (tab === 'matches') setMatches((await api<{ matches: AdminMatch[] }>('GET', '/api/admin/matches')).matches);
+      if (tab === 'server') {
+        const res = await api<{ settings: ServerSettings; maintenanceActive: boolean }>('GET', '/api/admin/settings');
+        setSettings(res.settings);
+        setMaintenanceActive(res.maintenanceActive);
+      }
     } catch (e) {
       toast((e as Error).message, 'err');
     }
@@ -103,6 +123,9 @@ export function AdminScreen() {
           </Btn>
           <Btn size="small" variant={tab === 'matches' ? 'yellow' : 'ghost'} onClick={() => setTab('matches')}>
             Partidas
+          </Btn>
+          <Btn size="small" variant={tab === 'server' ? 'yellow' : 'ghost'} onClick={() => setTab('server')}>
+            Servidor
           </Btn>
         </div>
         {tab === 'dash' && stats && (
@@ -203,6 +226,9 @@ export function AdminScreen() {
                           <Btn size="small" variant="ghost" onClick={() => setRole(u, u.role === 'admin' ? 'player' : 'admin')}>
                             {u.role === 'admin' ? 'Quitar admin' : 'Hacer admin'}
                           </Btn>
+                          <Btn size="small" variant="yellow" onClick={() => setGrantUser(u)}>
+                            + Recursos
+                          </Btn>
                         </div>
                       </td>
                     </tr>
@@ -210,6 +236,37 @@ export function AdminScreen() {
                 </tbody>
               </table>
             </div>
+            {grantUser && (
+              <div class="panel" style={{ marginTop: '12px' }}>
+                <h4>Otorgar recursos a {grantUser.username}</h4>
+                <div class="row wrap" style={{ gap: '8px', alignItems: 'center' }}>
+                  <input type="number" min="0" value={grantCoins} onInput={(e) => setGrantCoins((e.target as HTMLInputElement).value)} placeholder="Monedas" style={{ width: '120px' }} />
+                  <input type="text" value={grantItem} onInput={(e) => setGrantItem((e.target as HTMLInputElement).value)} placeholder="ID de ítem (opcional)" style={{ width: '200px' }} />
+                  <Btn
+                    size="small"
+                    variant="green"
+                    onClick={async () => {
+                      try {
+                        await api('POST', `/api/admin/users/${grantUser.id}/grant`, {
+                          coins: Number(grantCoins) || 0,
+                          itemId: grantItem.trim() || undefined,
+                        });
+                        toast(`Recursos otorgados a ${grantUser.username}`, 'ok');
+                        setGrantUser(null);
+                        setGrantItem('');
+                      } catch (e) {
+                        toast((e as Error).message, 'err');
+                      }
+                    }}
+                  >
+                    Otorgar
+                  </Btn>
+                  <Btn size="small" variant="ghost" onClick={() => setGrantUser(null)}>
+                    Cancelar
+                  </Btn>
+                </div>
+              </div>
+            )}
           </div>
         )}
         {tab === 'matches' && (
@@ -241,6 +298,86 @@ export function AdminScreen() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+        )}
+        {tab === 'server' && settings && (
+          <div class="grid layout-split-2">
+            <div class="panel">
+              <h3>Anuncio global</h3>
+              <label class="row" style={{ gap: '8px', marginBottom: '8px' }}>
+                <input
+                  type="checkbox"
+                  checked={settings.announcementEnabled}
+                  onChange={(e) => setSettings({ ...settings, announcementEnabled: (e.target as HTMLInputElement).checked })}
+                />
+                Habilitar anuncio en el juego
+              </label>
+              <input
+                type="text"
+                value={settings.announcementText}
+                onInput={(e) => setSettings({ ...settings, announcementText: (e.target as HTMLInputElement).value })}
+                placeholder="Texto del anuncio..."
+                style={{ width: '100%', marginBottom: '12px' }}
+              />
+              <h3>Mantenimiento (deshabilitar partidas)</h3>
+              <label class="row" style={{ gap: '8px', marginBottom: '8px' }}>
+                <input
+                  type="checkbox"
+                  checked={settings.maintenanceEnabled}
+                  onChange={(e) => setSettings({ ...settings, maintenanceEnabled: (e.target as HTMLInputElement).checked })}
+                />
+                Bloquear partidas en horario fijo {maintenanceActive ? '(ACTIVO AHORA)' : ''}
+              </label>
+              <div class="row" style={{ gap: '8px', marginBottom: '12px' }}>
+                <input type="time" value={settings.maintenanceStart} onInput={(e) => setSettings({ ...settings, maintenanceStart: (e.target as HTMLInputElement).value })} />
+                <span>a</span>
+                <input type="time" value={settings.maintenanceEnd} onInput={(e) => setSettings({ ...settings, maintenanceEnd: (e.target as HTMLInputElement).value })} />
+              </div>
+              <Btn
+                size="small"
+                variant="green"
+                onClick={async () => {
+                  try {
+                    const res = await api<{ settings: ServerSettings; maintenanceActive: boolean }>('PUT', '/api/admin/settings', settings);
+                    setSettings(res.settings);
+                    setMaintenanceActive(res.maintenanceActive);
+                    toast('Configuración guardada', 'ok');
+                  } catch (e) {
+                    toast((e as Error).message, 'err');
+                  }
+                }}
+              >
+                Guardar configuración
+              </Btn>
+            </div>
+            <div class="panel">
+              <h3>Imagen Docker (GHCR)</h3>
+              <label class="row" style={{ gap: '8px', marginBottom: '8px' }}>
+                <input
+                  type="checkbox"
+                  checked={settings.autoDeployEnabled}
+                  onChange={(e) => setSettings({ ...settings, autoDeployEnabled: (e.target as HTMLInputElement).checked })}
+                />
+                Subida automática programada (horario UTC)
+              </label>
+              <div class="row" style={{ gap: '8px', marginBottom: '12px' }}>
+                <input type="time" value={settings.autoDeploySchedule} onInput={(e) => setSettings({ ...settings, autoDeploySchedule: (e.target as HTMLInputElement).value })} />
+              </div>
+              <Btn
+                size="small"
+                variant="yellow"
+                onClick={async () => {
+                  try {
+                    await api('POST', '/api/admin/deploy');
+                    toast('Build y subida de imagen iniciados en GitHub Actions', 'ok');
+                  } catch (e) {
+                    toast((e as Error).message, 'err');
+                  }
+                }}
+              >
+                Subir nueva imagen ahora (Manual)
+              </Btn>
             </div>
           </div>
         )}

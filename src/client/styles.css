@@ -3685,13 +3685,6 @@ h4,
   flex-shrink: 0;
 }
 
-.mode-new-pill {
-  background: #ff4d5e;
-  color: #ffffff;
-  font-size: 8px;
-  padding: 2px 5px;
-}
-
 .menu-icon-dock {
   display: grid;
   grid-template-columns: repeat(6, minmax(44px, 1fr));
@@ -4297,4 +4290,115 @@ body.reduce-motion *::before,
 body.reduce-motion *::after {
   animation-duration: 0.01ms !important;
   animation-iteration-count: 1 !important;
+}
+
+/* ===== Responsive: phones & tablets ===== */
+
+/* Reserve space for touch controls so the board is never covered. */
+@media (orientation: portrait) {
+  .game-root.touch-on .game-stage {
+    padding-bottom: calc(150px + env(safe-area-inset-bottom));
+  }
+}
+
+@media (orientation: landscape) and (max-width: 1100px) {
+  .game-root.touch-on .game-stage {
+    padding-left: calc(140px + env(safe-area-inset-left));
+    padding-right: calc(150px + env(safe-area-inset-right));
+  }
+}
+
+/* Touch control safe-area offsets apply everywhere, not only on small screens. */
+.game-root.touch-on .joy {
+  left: calc(14px + env(safe-area-inset-left));
+  bottom: calc(14px + env(safe-area-inset-bottom));
+}
+
+.game-root.touch-on .tbtns {
+  right: calc(14px + env(safe-area-inset-right));
+  bottom: calc(14px + env(safe-area-inset-bottom));
+}
+
+/* Screens and modals must scroll and respect the home indicator. */
+.screen {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.game-root .screen,
+.screen.game-screen {
+  overflow: hidden;
+}
+
+.modal {
+  max-height: calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  max-width: min(640px, calc(100vw - 16px));
+}
+
+/* Short landscape phones: compact chrome. */
+@media (max-height: 500px) and (orientation: landscape) {
+  .hud-top {
+    height: 64px;
+    min-height: 64px;
+    max-height: 64px;
+  }
+  h1 {
+    font-size: clamp(22px, 6vh, 34px);
+  }
+}
+
+/* Touch devices: no sticky hover, give press feedback instead. */
+@media (hover: none) {
+  .btn:hover,
+  .card:hover,
+  .char-tile:hover,
+  .icon-dock-btn:hover,
+  .hero-quick-btn:hover,
+  .skin-swatch-btn:hover,
+  .topbar-coins-btn:hover {
+    transform: none;
+    filter: none;
+  }
+  .btn:active,
+  .card:active,
+  .char-tile:active,
+  .icon-dock-btn:active,
+  .hero-quick-btn:active,
+  .skin-swatch-btn:active,
+  .topbar-coins-btn:active {
+    transform: translateY(2px) scale(0.98);
+    filter: brightness(1.1);
+  }
+}
+
+/* Keep icon dock tap targets at least 44px on narrow phones. */
+@media (max-width: 640px) {
+  .menu-icon-dock {
+    grid-template-columns: repeat(auto-fit, minmax(44px, 1fr));
+  }
+}
+
+
+/* Logo ribbon: keep on one line and scale with viewport width. */
+@media (max-width: 640px) {
+  .logo-ribbon {
+    font-size: min(calc(var(--logo-size, 110px) * 0.24), 2.9vw);
+    padding-inline: 0.6em;
+    white-space: nowrap;
+    max-width: 94vw;
+  }
+}
+
+/* Coarse pointers: minimum 44px tap targets for small topbar buttons. */
+@media (pointer: coarse) {
+  .btn.small,
+  .topbar-auth-btn,
+  .topbar-icon-btn {
+    min-height: 44px;
+  }
+  .topbar-icon-btn {
+    min-width: 44px;
+  }
 }

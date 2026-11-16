@@ -177,12 +177,34 @@ export type MenuIconName =
   | 'rules'
   | 'players1'
   | 'players2'
-  | 'powerups';
+  | 'powerups'
+  | 'festival'
+  | 'online'
+  | 'tutorial';
 
 export function MenuIcon({ name, size = 24 }: { name: MenuIconName; size?: number }) {
   const s = '#120820';
   return (
     <svg class="menu-svg-ico" viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
+      {name === 'festival' && (
+        <>
+          <path d="M12 2.5L14.9 8.4L21.4 9.3L16.7 13.9L17.8 20.4L12 17.3L6.2 20.4L7.3 13.9L2.6 9.3L9.1 8.4L12 2.5Z" fill="#ffd23f" stroke={s} stroke-width="1.8" stroke-linejoin="round" />
+        </>
+      )}
+      {name === 'online' && (
+        <>
+          <circle cx="12" cy="12" r="9" fill="#5ff2ff" stroke={s} stroke-width="1.8" />
+          <ellipse cx="12" cy="12" rx="4.2" ry="9" fill="none" stroke={s} stroke-width="1.5" />
+          <path d="M3.5 9.5H20.5M3.5 14.5H20.5" stroke={s} stroke-width="1.5" />
+        </>
+      )}
+      {name === 'tutorial' && (
+        <>
+          <path d="M5 4.5C5 3.4 5.9 2.5 7 2.5H19V19.5H7C5.9 19.5 5 18.6 5 17.5V4.5Z" fill="#5ff2ff" stroke={s} stroke-width="1.8" stroke-linejoin="round" />
+          <path d="M5 17.5C5 16.4 5.9 15.5 7 15.5H19V20.5H7C5.9 20.5 5 19.6 5 18.5V17.5Z" fill="#fff7e6" stroke={s} stroke-width="1.8" stroke-linejoin="round" />
+          <path d="M9 6.5H15.5M9 10H15.5" stroke={s} stroke-width="1.6" stroke-linecap="round" />
+        </>
+      )}
       {name === 'characters' && (
         <>
           <path d="M12 2L14.5 6H9.5L12 2Z" fill="#ffd23f" stroke={s} stroke-width="1.8" stroke-linejoin="round" />

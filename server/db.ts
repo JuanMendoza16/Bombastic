@@ -114,7 +114,32 @@ CREATE TABLE IF NOT EXISTS audit_log (
   ip          TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_audit_at ON audit_log(at);
+
+CREATE TABLE IF NOT EXISTS server_settings (
+  key         TEXT    PRIMARY KEY,
+  value       TEXT    NOT NULL
+);
 `;
+
+export interface ServerSettings {
+  announcementEnabled: boolean;
+  announcementText: string;
+  maintenanceEnabled: boolean;
+  maintenanceStart: string;
+  maintenanceEnd: string;
+  autoDeployEnabled: boolean;
+  autoDeploySchedule: string;
+}
+
+const DEFAULT_SETTINGS: ServerSettings = {
+  announcementEnabled: false,
+  announcementText: '',
+  maintenanceEnabled: false,
+  maintenanceStart: '03:00',
+  maintenanceEnd: '03:30',
+  autoDeployEnabled: false,
+  autoDeploySchedule: '03:05',
+};
 
 export class Db {
   readonly db: DatabaseSync;
@@ -357,6 +382,54 @@ export class Db {
         since,
       ),
     };
+  }
+
+  getServerSettings(): ServerSettings {
+    const rows = this.db.prepare('SELECT key, value FROM server_settings').all() as { key: string; value: string }[];
+    const map = new Map(rows.map((r) => [r.key, r.value]));
+    return {
+      announcementEnabled: map.get('announcementEnabled') === 'true',
+      announcementText: map.get('announcementText') ?? DEFAULT_SETTINGS.announcementText,
+      maintenanceEnabled: map.get('maintenanceEnabled') === 'true',
+      maintenanceStart: map.get('maintenanceStart') ?? DEFAULT_SETTINGS.maintenanceStart,
+      maintenanceEnd: map.get('maintenanceEnd') ?? DEFAULT_SETTINGS.maintenanceEnd,
+      autoDeployEnabled: map.get('autoDeployEnabled') === 'true',
+      autoDeploySchedule: map.get('autoDeploySchedule') ?? DEFAULT_SETTINGS.autoDeploySchedule,
+    };
+  }
+
+  setServerSettings(patch: Partial<ServerSettings>): ServerSettings {
+    const stmt = this.db.prepare('INSERT INTO server_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value');
+    for (const [k, v] of Object.entries(patch)) {
+      if (v !== undefined) stmt.run(k, String(v));
+    }
+    return this.getServerSettings();
+  }
+
+  isMaintenanceActive(now = new Date()): boolean {
+    const s = this.getServerSettings();
+    if (!s.maintenanceEnabled) return false;
+    const toMins = (hhmm: string) => {
+      const [h, m] = hhmm.split(':').map(Number);
+      return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : -1;
+    };
+    const start = toMins(s.maintenanceStart);
+    const end = toMins(s.maintenanceEnd);
+    if (start < 0 || end < 0 || start === end) return false;
+    const cur = now.getHours() * 60 + now.getMinutes();
+    return start < end ? cur >= start && cur < end : cur >= start || cur < end;
+  }
+
+  grantUserResource(userId: number, coins: number, itemId?: string): { coins: number; owned: string[] } {
+    const p = this.getProfile(userId);
+    if (!p) throw new Error('Usuario no encontrado');
+    const addCoins = Math.max(0, Math.floor(coins));
+    p.coins += addCoins;
+    if (itemId && !p.owned.includes(itemId)) {
+      p.owned.push(itemId);
+    }
+    this.saveProfile(userId, p);
+    return { coins: p.coins, owned: p.owned };
   }
 }
 

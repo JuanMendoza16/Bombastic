@@ -135,17 +135,16 @@ export function MainMenu() {
             </Btn>
             <div class="menu-modes-row">
               <Btn variant="purple" class="menu-mode-btn" onClick={() => nav.go('festival')}>
-                <span class="mode-btn-ico" aria-hidden="true">★</span>
+                <span class="mode-btn-ico" aria-hidden="true"><MenuIcon name="festival" size={18} /></span>
                 <span>FESTIVAL</span>
               </Btn>
               <Btn variant="blue" class="menu-mode-btn" onClick={() => nav.go('online')}>
-                <span class="mode-btn-ico" aria-hidden="true">🌐</span>
+                <span class="mode-btn-ico" aria-hidden="true"><MenuIcon name="online" size={18} /></span>
                 <span>ONLINE</span>
               </Btn>
               <Btn variant={tutorialPending ? 'green' : 'blue'} class="menu-mode-btn tutorial-btn" onClick={() => startTutorial()}>
-                <span class="mode-btn-ico" aria-hidden="true">📘</span>
+                <span class="mode-btn-ico" aria-hidden="true"><MenuIcon name="tutorial" size={18} /></span>
                 <span>TUTORIAL</span>
-                {tutorialPending && <span class="tag mode-new-pill">¡Nuevo!</span>}
               </Btn>
             </div>
             <div class="menu-divider">Accesos</div>

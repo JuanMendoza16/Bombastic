@@ -84,9 +84,13 @@ export function GameScreen({ launch }: { launch: GameLaunch }) {
     let lastStageW = 0;
     let lastStageH = 0;
     const resize = () => {
+      // Use the content box so CSS padding can reserve room for touch controls.
       const r = stage.getBoundingClientRect();
-      const w = Math.round(r.width);
-      const h = Math.round(r.height);
+      const cs = getComputedStyle(stage);
+      const padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+      const padY = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+      const w = Math.round(r.width - padX);
+      const h = Math.round(r.height - padY);
       if (Math.abs(w - lastStageW) < 2 && Math.abs(h - lastStageH) < 2 && renderer.worldW === session.state.w * 32) return;
       lastStageW = w;
       lastStageH = h;
@@ -173,10 +177,11 @@ export function GameScreen({ launch }: { launch: GameLaunch }) {
     setSession(s);
   };
 
-  const touchOn = st.touch === 'on' || (st.touch === 'auto' && matchMedia('(pointer: coarse)').matches);
+  const coarse = useCoarsePointer();
+  const touchOn = st.touch === 'on' || (st.touch === 'auto' && coarse);
 
   return (
-    <div class="game-root">
+    <div class={touchOn ? 'game-root touch-on' : 'game-root'}>
       <Hud session={session} feedback={feedback} />
       <div class="game-stage" ref={stageRef}>
         <canvas ref={canvasRef} />
@@ -1223,3 +1228,14 @@ function Results({ launch, session, onRematch, onQuit }: { launch: GameLaunch; s
 }
 
 void DIVISIONS;
+
+function useCoarsePointer(): boolean {
+  const [coarse, setCoarse] = useState(() => matchMedia('(pointer: coarse)').matches);
+  useEffect(() => {
+    const mq = matchMedia('(pointer: coarse)');
+    const on = () => setCoarse(mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
+  return coarse;
+}

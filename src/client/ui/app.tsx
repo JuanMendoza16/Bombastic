@@ -1,6 +1,7 @@
 // Componente raíz: enruta entre pantallas.
-import { useEffect } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import { audio } from '../audio/audio';
+import { api } from '../services/api';
 import { profiles } from '../services/profile';
 import { settings } from '../services/settings';
 import { Toasts } from './common';
@@ -32,8 +33,16 @@ function launchKey(l: unknown): string {
 
 export function App() {
   const route = useRoute();
+  const [announcement, setAnnouncement] = useState<string | null>(null);
 
   useEffect(() => {
+    const loadStatus = () => {
+      void api<{ announcementEnabled: boolean; announcementText: string }>('GET', '/api/status')
+        .then((s) => setAnnouncement(s.announcementEnabled && s.announcementText ? s.announcementText : null))
+        .catch(() => {});
+    };
+    loadStatus();
+    const statusTimer = setInterval(loadStatus, 60000);
     if (typeof window !== 'undefined' && (window.location.pathname.startsWith('/nueva-version') || window.location.hash.includes('nueva-version'))) {
       if (nav.current.id === 'splash') nav.replace('title');
     }
@@ -49,6 +58,7 @@ export function App() {
     window.addEventListener('pointerdown', unlock, { once: true });
     window.addEventListener('keydown', unlock, { once: true });
     return () => {
+      clearInterval(statusTimer);
       off();
     };
   }, []);
@@ -115,6 +125,25 @@ export function App() {
   }
   return (
     <>
+      {announcement && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            zIndex: 9999,
+            background: 'linear-gradient(90deg,#ffb13b,#ff7b3b)',
+            color: '#1b1026',
+            fontWeight: 700,
+            textAlign: 'center',
+            padding: '6px 12px',
+            fontSize: '0.9rem',
+          }}
+        >
+          📢 {announcement}
+        </div>
+      )}
       {screen}
       <Toasts />
     </>

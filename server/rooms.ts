@@ -670,6 +670,10 @@ export class RoomManager {
         send(c, { t: 'rooms', rooms: [...this.rooms.values()].filter((r) => r.settings.public).map((r) => r.listItem()) });
         break;
       case 'create': {
+        if (this.db.isMaintenanceActive()) {
+          send(c, { t: 'error', msg: 'Las partidas están deshabilitadas temporalmente por mantenimiento programado.' });
+          return;
+        }
         c.room?.remove(c);
         const settings = sanitizeSettings(msg.settings ?? {}, defaultSettings(msg.settings?.mode));
         const r = new Room(this, settings, false, `Sala de ${c.name}`);
@@ -679,6 +683,10 @@ export class RoomManager {
         break;
       }
       case 'join': {
+        if (this.db.isMaintenanceActive()) {
+          send(c, { t: 'error', msg: 'Las partidas están deshabilitadas temporalmente por mantenimiento programado.' });
+          return;
+        }
         const code = cleanText(msg.code, 8).toUpperCase();
         const r = this.rooms.get(code);
         if (!r) {

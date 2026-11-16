@@ -234,6 +234,18 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, path:
       return json(res, 200, { rows });
     }
 
+    if (p === '/api/status' && method === 'GET') {
+      const s = db.getServerSettings();
+      return json(res, 200, {
+        announcementEnabled: s.announcementEnabled,
+        announcementText: s.announcementText,
+        maintenanceActive: db.isMaintenanceActive(),
+        maintenanceEnabled: s.maintenanceEnabled,
+        maintenanceStart: s.maintenanceStart,
+        maintenanceEnd: s.maintenanceEnd,
+      });
+    }
+
     // --- administración ------------------------------------------------------------
     if (p === '/api/admin/stats' && method === 'GET') {
       admin();
@@ -259,6 +271,62 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, path:
         db.setRole(id, role);
       } else db.setBanned(id, m[2] === 'ban');
       db.audit(`admin_${m[2]}`, adminUser.id, `target=${id}`, ip);
+      return json(res, 200, { ok: true });
+    }
+    const grantMatch = /^\/api\/admin\/users\/(\d+)\/grant$/.exec(p);
+    if (grantMatch && method === 'POST') {
+      const { user: adminUser } = admin();
+      const id = Number(grantMatch[1]);
+      if (!db.userById(id)) throw new HttpError(404, 'Usuario inexistente.');
+      const b = (await readBody(req)) as Record<string, unknown>;
+      const coins = typeof b.coins === 'number' && Number.isFinite(b.coins) ? Math.max(0, Math.floor(b.coins)) : 0;
+      const itemId = typeof b.itemId === 'string' && b.itemId.trim() ? cleanText(b.itemId, 60) : undefined;
+      if (coins === 0 && !itemId) throw new HttpError(400, 'Indicá monedas o un ítem para otorgar.');
+      const result = db.grantUserResource(id, coins, itemId);
+      db.audit('admin_grant', adminUser.id, `target=${id} coins=${coins} item=${itemId ?? ''}`, ip);
+      return json(res, 200, { ok: true, ...result });
+    }
+    if (p === '/api/admin/settings' && method === 'GET') {
+      admin();
+      return json(res, 200, { settings: db.getServerSettings(), maintenanceActive: db.isMaintenanceActive() });
+    }
+    if (p === '/api/admin/settings' && method === 'PUT') {
+      const { user: adminUser } = admin();
+      const b = (await readBody(req)) as Record<string, unknown>;
+      const timeRe = /^([01]\d|2[0-3]):[0-5]\d$/;
+      const patch: Record<string, unknown> = {};
+      if (typeof b.announcementEnabled === 'boolean') patch.announcementEnabled = b.announcementEnabled;
+      if (typeof b.announcementText === 'string') patch.announcementText = cleanText(b.announcementText, 240);
+      if (typeof b.maintenanceEnabled === 'boolean') patch.maintenanceEnabled = b.maintenanceEnabled;
+      if (typeof b.maintenanceStart === 'string' && timeRe.test(b.maintenanceStart)) patch.maintenanceStart = b.maintenanceStart;
+      if (typeof b.maintenanceEnd === 'string' && timeRe.test(b.maintenanceEnd)) patch.maintenanceEnd = b.maintenanceEnd;
+      if (typeof b.autoDeployEnabled === 'boolean') patch.autoDeployEnabled = b.autoDeployEnabled;
+      if (typeof b.autoDeploySchedule === 'string' && timeRe.test(b.autoDeploySchedule)) patch.autoDeploySchedule = b.autoDeploySchedule;
+      const settings = db.setServerSettings(patch);
+      db.audit('admin_settings', adminUser.id, JSON.stringify(patch), ip);
+      return json(res, 200, { settings, maintenanceActive: db.isMaintenanceActive() });
+    }
+    if (p === '/api/admin/deploy' && method === 'POST') {
+      const { user: adminUser } = admin();
+      const token = process.env.GH_DEPLOY_TOKEN;
+      const repo = process.env.GH_REPO ?? 'JuanMendoza16/Bombastic';
+      if (!token) {
+        throw new HttpError(400, 'Falta configurar GH_DEPLOY_TOKEN en el servidor para disparar la subida manual.');
+      }
+      const ghRes = await fetch(`https://api.github.com/repos/${repo}/actions/workflows/docker.yml/dispatches`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/vnd.github+json',
+          'User-Agent': 'Bombastic-Admin',
+        },
+        body: JSON.stringify({ ref: 'main' }),
+      });
+      if (!ghRes.ok) {
+        const txt = await ghRes.text();
+        throw new HttpError(502, `GitHub respondió ${ghRes.status}: ${txt.slice(0, 160)}`);
+      }
+      db.audit('admin_deploy', adminUser.id, `repo=${repo}`, ip);
       return json(res, 200, { ok: true });
     }
 

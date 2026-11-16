@@ -1,7 +1,7 @@
 // Servidor de Bomberman: sirve el juego web, la API REST y las partidas online (WebSocket).
 //
 // Variables de entorno:
-//   PORT          puerto HTTP (8080)
+//   PORT          puerto HTTP (8123)
 //   JWT_SECRET    secreto para firmar sesiones (obligatorio en producción)
 //   DB_PATH       ruta de la base SQLite (data/bomberman.db)
 //   LOG_FILE      archivo de logs (opcional)
@@ -21,7 +21,7 @@ import { hashPassword, randomToken } from './security';
 
 const ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
 const DIST = join(ROOT, 'dist');
-const PORT = Number(process.env.PORT ?? 8080);
+const PORT = Number(process.env.PORT ?? 8123);
 const VERSION = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version as string;
 
 let SECRET = process.env.JWT_SECRET ?? '';
